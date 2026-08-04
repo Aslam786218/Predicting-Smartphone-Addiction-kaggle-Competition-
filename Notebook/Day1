@@ -1,1 +1,88 @@
+# ============================================
+# Playground Series S6E8 - Smartphone Addiction
+# LightGBM Baseline (Kaggle Notebook Ready)
+# ============================================
 
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import roc_auc_score
+import lightgbm as lgb
+
+# ---- 1. Load data (Kaggle auto-mounts competition data here) ----
+train = pd.read_csv('/kaggle/input/competitions/playground-series-s6e8/train.csv')
+test = pd.read_csv('/kaggle/input/competitions/playground-series-s6e8/test.csv')
+target = 'addicted_label'
+id_col = 'id'
+cat_cols = ['gender', 'stress_level', 'academic_work_impact']
+num_cols = [c for c in train.columns if c not in cat_cols + [target, id_col]]
+
+# ---- 2. Encode categoricals ----
+stress_map = {'Low': 0, 'Medium': 1, 'High': 2}
+impact_map = {'No': 0, 'Yes': 1}
+
+for df in [train, test]:
+    df['stress_level'] = df['stress_level'].map(stress_map)
+    df['academic_work_impact'] = df['academic_work_impact'].map(impact_map)
+    df['gender'] = df['gender'].astype('category')
+
+features = num_cols + ['stress_level', 'academic_work_impact', 'gender']
+
+X = train[features]
+y = train[target]
+X_test = test[features]
+
+# ---- 3. Cross-validated training ----
+skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+oof_preds = np.zeros(len(train))
+test_preds = np.zeros(len(test))
+aucs = []
+
+params = {
+    'objective': 'binary',
+    'metric': 'auc',
+    'learning_rate': 0.05,
+    'num_leaves': 63,
+    'min_child_samples': 30,
+    'subsample': 0.8,
+    'subsample_freq': 1,
+    'colsample_bytree': 0.8,
+    'reg_alpha': 0.1,
+    'reg_lambda': 0.1,
+    'random_state': 42,
+    'verbosity': -1,
+    'n_jobs': -1,
+}
+
+for fold, (train_idx, val_idx) in enumerate(skf.split(X, y)):
+    X_tr, X_val = X.iloc[train_idx], X.iloc[val_idx]
+    y_tr, y_val = y.iloc[train_idx], y.iloc[val_idx]
+
+    train_set = lgb.Dataset(X_tr, label=y_tr, categorical_feature=['gender'])
+    val_set = lgb.Dataset(X_val, label=y_val, categorical_feature=['gender'], reference=train_set)
+
+    model = lgb.train(
+        params,
+        train_set,
+        num_boost_round=2000,
+        valid_sets=[val_set],
+        callbacks=[lgb.early_stopping(100, verbose=False), lgb.log_evaluation(0)]
+    )
+
+    val_pred = model.predict(X_val, num_iteration=model.best_iteration)
+    oof_preds[val_idx] = val_pred
+    fold_auc = roc_auc_score(y_val, val_pred)
+    aucs.append(fold_auc)
+    print(f"Fold {fold+1} AUC: {fold_auc:.5f}")
+
+    test_preds += model.predict(X_test, num_iteration=model.best_iteration) / skf.n_splits
+
+overall_auc = roc_auc_score(y, oof_preds)
+print(f"\nMean fold AUC: {np.mean(aucs):.5f} (+/- {np.std(aucs):.5f})")
+print(f"Overall OOF AUC: {overall_auc:.5f}")
+
+# ---- 4. Build submission ----
+submission = pd.DataFrame({'id': test[id_col], 'addicted_label': test_preds})
+submission.to_csv('submission.csv', index=False)   # saved to /kaggle/working/
+print("\nsubmission.csv saved.")
+print(submission.head())
