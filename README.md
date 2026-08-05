@@ -74,8 +74,8 @@ All feature columns contain missing values (roughly 15–20% per column). The ta
 ```
 .
 ├── README.md
-├── notebook.ipynb          # Full training + inference pipeline
-├── submission.csv          # Final submitted predictions
+├── Notebook          # Full training + inference pipeline
+├── CSV               # Final submitted predictions
 └── requirements.txt        # Python dependencies
 ```
 
