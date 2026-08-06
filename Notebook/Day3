@@ -1,1 +1,177 @@
+# ============================================
+# Playground Series S6E8 - LightGBM + CatBoost Ensemble (FIXED)
+# ============================================
 
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import roc_auc_score
+import lightgbm as lgb
+from catboost import CatBoostClassifier
+import warnings
+warnings.filterwarnings('ignore')
+
+# ---- 1. Load Data ----
+DATA_DIR = '/kaggle/input/competitions/playground-series-s6e8'
+
+train = pd.read_csv(f'{DATA_DIR}/train.csv')
+test = pd.read_csv(f'{DATA_DIR}/test.csv')
+
+print(f"Train shape: {train.shape}")
+print(f"Test shape:  {test.shape}\n")
+
+# ---- 2. Feature Setup ----
+TARGET = 'addicted_label'
+ID_COL = 'id'
+CAT_COLS = ['gender', 'stress_level', 'academic_work_impact']
+NUM_COLS = [c for c in train.columns if c not in CAT_COLS + [TARGET, ID_COL]]
+
+# Ordinal encode all categoricals (including gender)
+GENDER_MAP = {'Male': 0, 'Female': 1, 'Other': 2, 'Missing': 3}
+STRESS_MAP = {'Low': 0, 'Medium': 1, 'High': 2, 'Missing': 3}
+IMPACT_MAP = {'No': 0, 'Yes': 1, 'Missing': 2}
+
+def preprocess(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df['gender'] = df['gender'].fillna('Missing').map(GENDER_MAP)
+    df['stress_level'] = df['stress_level'].fillna('Missing').map(STRESS_MAP)
+    df['academic_work_impact'] = df['academic_work_impact'].fillna('Missing').map(IMPACT_MAP)
+    return df
+
+train = preprocess(train)
+test = preprocess(test)
+
+FEATURES = NUM_COLS + ['stress_level', 'academic_work_impact', 'gender']
+CAT_FEATURES_IDX = [FEATURES.index('gender')]  # For CatBoost only
+
+X = train[FEATURES]
+y = train[TARGET]
+X_test = test[FEATURES]
+
+# ---- 3. Cross-Validated Training (Both Models) ----
+skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+# Out-of-fold predictions
+oof_lgbm = np.zeros(len(train))
+oof_catboost = np.zeros(len(train))
+
+# Test predictions
+test_lgbm = np.zeros(len(test))
+test_catboost = np.zeros(len(test))
+
+lgbm_scores = []
+catboost_scores = []
+
+print("=" * 50)
+print("TRAINING LIGHTGBM")
+print("=" * 50)
+
+lgb_params = {
+    'objective': 'binary',
+    'metric': 'auc',
+    'learning_rate': 0.05,
+    'num_leaves': 63,
+    'min_child_samples': 30,
+    'subsample': 0.8,
+    'subsample_freq': 1,
+    'colsample_bytree': 0.8,
+    'reg_alpha': 0.1,
+    'reg_lambda': 0.1,
+    'random_state': 42,
+    'verbosity': -1,
+    'n_jobs': -1,
+}
+
+for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), start=1):
+    X_tr, X_val = X.iloc[train_idx], X.iloc[val_idx]
+    y_tr, y_val = y.iloc[train_idx], y.iloc[val_idx]
+
+    train_set = lgb.Dataset(X_tr, label=y_tr, categorical_feature=[])
+    val_set = lgb.Dataset(X_val, label=y_val, categorical_feature=[], reference=train_set)
+
+    model = lgb.train(
+        lgb_params,
+        train_set,
+        num_boost_round=2000,
+        valid_sets=[val_set],
+        callbacks=[lgb.early_stopping(100, verbose=False), lgb.log_evaluation(0)]
+    )
+
+    val_pred = model.predict(X_val, num_iteration=model.best_iteration)
+    oof_lgbm[val_idx] = val_pred
+    test_lgbm += model.predict(X_test, num_iteration=model.best_iteration) / 5
+
+    fold_auc = roc_auc_score(y_val, val_pred)
+    lgbm_scores.append(fold_auc)
+    print(f"Fold {fold}/5 — LightGBM AUC: {fold_auc:.5f}")
+
+print(f"LightGBM Mean AUC: {np.mean(lgbm_scores):.5f} (+/- {np.std(lgbm_scores):.5f})\n")
+
+print("=" * 50)
+print("TRAINING CATBOOST")
+print("=" * 50)
+
+catboost_params = {
+    'iterations': 2000,
+    'learning_rate': 0.05,
+    'depth': 8,
+    'l2_leaf_reg': 1.0,
+    'subsample': 0.8,
+    'colsample_bylevel': 0.8,
+    'min_data_in_leaf': 30,
+    'loss_function': 'Logloss',
+    'eval_metric': 'AUC',
+    'early_stopping_rounds': 100,
+    'verbose': False,
+    'random_state': 42,
+    'use_best_model': True,
+}
+
+for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), start=1):
+    X_tr, X_val = X.iloc[train_idx], X.iloc[val_idx]
+    y_tr, y_val = y.iloc[train_idx], y.iloc[val_idx]
+
+    model = CatBoostClassifier(**catboost_params, cat_features=CAT_FEATURES_IDX)
+
+    model.fit(
+        X_tr, y_tr,
+        eval_set=(X_val, y_val),
+        verbose=False,
+    )
+
+    val_pred = model.predict_proba(X_val)[:, 1]
+    oof_catboost[val_idx] = val_pred
+    test_catboost += model.predict_proba(X_test)[:, 1] / 5
+
+    fold_auc = roc_auc_score(y_val, val_pred)
+    catboost_scores.append(fold_auc)
+    print(f"Fold {fold}/5 — CatBoost AUC: {fold_auc:.5f}")
+
+print(f"CatBoost Mean AUC: {np.mean(catboost_scores):.5f} (+/- {np.std(catboost_scores):.5f})\n")
+
+# ---- 4. Ensemble Blend ----
+print("=" * 50)
+print("ENSEMBLE RESULTS")
+print("=" * 50)
+
+# Blend OOF predictions (equal weight)
+oof_ensemble = (oof_lgbm + oof_catboost) / 2
+ensemble_auc = roc_auc_score(y, oof_ensemble)
+
+# Blend test predictions
+test_ensemble = (test_lgbm + test_catboost) / 2
+
+print(f"LightGBM OOF AUC:  {roc_auc_score(y, oof_lgbm):.5f}")
+print(f"CatBoost OOF AUC:  {roc_auc_score(y, oof_catboost):.5f}")
+print(f"Ensemble OOF AUC:  {ensemble_auc:.5f}")
+print()
+
+# ---- 5. Submission ----
+submission = pd.DataFrame({
+    ID_COL: test[ID_COL],
+    TARGET: test_ensemble
+})
+
+submission.to_csv('submission.csv', index=False)
+print("submission.csv saved.")
+print(submission.head())
