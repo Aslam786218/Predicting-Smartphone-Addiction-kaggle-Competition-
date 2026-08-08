@@ -57,32 +57,12 @@ All feature columns contain missing values (roughly 15–20% per column). The ta
    - Test predictions averaged across all 5 fold models
 
 ## Results
-Submission 1: LightGBM Baseline
-Fold	AUC
-1	0.96278
-2	0.96353
-3	0.96397
-4	0.96439
-5	0.96322
-
-CV AUC: 0.96358 (± 0.00056) | Leaderboard: ~0.9636
-
-Submission 2: CatBoost
-
-CV AUC: 0.96287–0.96387 | Leaderboard: 0.96387 ✅ (Best single model)
-
-Submission 3: Ensemble (LightGBM + CatBoost)
-
-LightGBM CV: 0.96361 (± 0.00053) CatBoost CV: 0.96387 Ensemble CV: 0.96XXX (pending leaderboard)
-
-Submission 4: CatBoost + Feature Engineering
-
-Metric	Score
-Model	CatBoost + 9 Engineered Features
-CV AUC	0.96401
-Leaderboard Score	0.96401
-vs Best (0.96524)	-0.00123
-
+Submission	Model	Features	CV AUC	Leaderboard	Status
+1	LightGBM	13 original	0.96358	0.9636	Completed
+2	CatBoost	13 original	0.96387	0.96387	Completed
+3	Ensemble (LGB + CB)	13 original	0.96361 + 0.96387	0.96524 ✅ Best	Completed
+4	CatBoost + Features	13 + 9 engineered	0.96401	0.96401	Completed
+5	Triple Blend	13 + 9 engineered	Pending	Pending	In Progress
 ## Repository Structure
 
 ```
