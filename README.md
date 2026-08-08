@@ -57,7 +57,6 @@ All feature columns contain missing values (roughly 15–20% per column). The ta
    - Test predictions averaged across all 5 fold models
 
 ## Results
-## Results
 
 | Submission | Model | Features | Approach/Solution | CV AUC | Leaderboard | Status |
 |---|---|---|---|---|---|---|
