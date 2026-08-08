@@ -67,7 +67,7 @@ All feature columns contain missing values (roughly 15–20% per column). The ta
 | 5 | Triple Blend | 13 + 9 engineered | 33/33/33 blend of LightGBM + CatBoost + CatBoost+Features | Pending | Pending | In Progress |
 
 ## Repository Structure
-'''
+```
 .
 ├── README.md
 ├── notebooks/
@@ -77,7 +77,7 @@ All feature columns contain missing values (roughly 15–20% per column). The ta
 │   └── feature_engineering.ipynb
 ├── submission.csv
 └── requirements.txt
-'''
+```
 
 ## Requirements
 1.   pandas>=1.3.0
