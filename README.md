@@ -69,11 +69,7 @@ All feature columns contain missing values (roughly 15–20% per column). The ta
 ## Repository Structure
 .
 ├── README.md
-├── notebooks/
-│   ├── lightgbm_baseline.ipynb
-│   ├── catboost.ipynb
-│   ├── ensemble.ipynb
-│   └── feature_engineering.ipynb
+├── notebooks
 ├── submission.csv
 └── requirements.txt
 
