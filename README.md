@@ -108,13 +108,13 @@ lightgbm
 
 ## Usage
 
-**Option 1
+**Option 1**
 1. Download the competition data from Kaggle and place `train.csv`, `test.csv` in the working directory (or run directly as a Kaggle Notebook, where data auto-mounts).
 2. Run `notebook.ipynb` top to bottom.
 3. `submission.csv` is generated in the specified output directory, ready to submit to the competition.
 
-**Option 2
-Kaggle Notebook (Recommended)
+**Option 2**
+
 1.Go to the competition page → Code → New Notebook
 2.Kaggle automatically mounts data at /kaggle/input/competitions/playground-series-s6e8/
 3.Pick a notebook from the notebooks/ folder and copy the code
