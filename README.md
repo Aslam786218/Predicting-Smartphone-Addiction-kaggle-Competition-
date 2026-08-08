@@ -98,12 +98,11 @@ playground-series-s6e8
     └── Standard Python/Kaggle gitignore
 
 ## Requirements
-
-
-pandas
-numpy
-scikit-learn
-lightgbm
+1.   pandas>=1.3.0
+2.   numpy>=1.20.0
+3.   scikit-learn>=1.0.0
+4.   lightgbm>=3.0.0
+5.   catboost>=1.0.0
 
 
 ## Usage
