@@ -115,11 +115,11 @@ lightgbm
 
 **Option 2**
 
-1.Go to the competition page → Code → New Notebook
-2.Kaggle automatically mounts data at /kaggle/input/competitions/playground-series-s6e8/
-3.Pick a notebook from the notebooks/ folder and copy the code
-4.Paste into a cell and Run All
-5.submission.csv is generated in the notebook's Output folder
+1.Go to the competition page → Code → New Notebook.
+2.Kaggle automatically mounts data at /kaggle/input/competitions/playground-series-s6e8/.
+3.Pick a notebook from the notebooks/ folder and copy the code.
+4.Paste into a cell and Run All.
+5.submission.csv is generated in the notebook's Output folder.
 
 ## Submitting to Kaggle
 
