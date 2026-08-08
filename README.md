@@ -67,11 +67,35 @@ All feature columns contain missing values (roughly 15–20% per column). The ta
 | 5 | Triple Blend | 13 + 9 engineered | 33/33/33 blend of LightGBM + CatBoost + CatBoost+Features | Pending | Pending | In Progress |
 
 ## Repository Structure
-.
+playground-series-s6e8
+│
 ├── README.md
-├── notebooks
+│   └── Complete documentation, problem statement, approach, results, and usage
+│
+├── notebooks/
+│   ├── lightgbm_baseline.py
+│   │   └── Submission 1: LightGBM 5-fold CV (AUC: 0.9636)
+│   │
+│   ├── catboost_baseline.py
+│   │   └── Submission 2: CatBoost 5-fold CV (AUC: 0.96387)
+│   │
+│   ├── ensemble_blend.py
+│   │   └── Submission 3: Ensemble 50/50 LGB + CB (AUC: 0.96524) ✅ Best
+│   │
+│   ├── feature_engineering.py
+│   │   └── Submission 4: CatBoost + 9 engineered features (AUC: 0.96401)
+│   │
+│   └── triple_blend_ensemble.py
+│       └── Submission 5: Triple blend LGB + CB + CB+Features (In Progress)
+│
 ├── submission.csv
-└── requirements.txt
+│   └── Final predictions for submission (best model)
+│
+├── requirements.txt
+│   └── Python dependencies (pandas, numpy, scikit-learn, lightgbm, catboost)
+│
+└── .gitignore
+    └── Standard Python/Kaggle gitignore
 
 ## Requirements
 
