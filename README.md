@@ -72,16 +72,16 @@ All feature columns contain missing values (roughly 15–20% per column). The ta
 ├── Notebook          # Full training + inference pipeline
 ├── CSV               # Final submitted predictions
 └── requirements.txt        # Python dependencies
-```
+
 
 ## Requirements
 
-```
+
 pandas
 numpy
 scikit-learn
 lightgbm
-```
+
 
 ## Usage
 
