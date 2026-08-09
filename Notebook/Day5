@@ -1,1 +1,195 @@
+# ============================================
+# Playground Series S6E8 - Triple Blend Ensemble
+# LightGBM + CatBoost + CatBoost+Features
+# ============================================
 
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import roc_auc_score
+import lightgbm as lgb
+from catboost import CatBoostClassifier
+import warnings
+warnings.filterwarnings('ignore')
+
+# ---- 1. Load Data ----
+DATA_DIR = '/kaggle/input/competitions/playground-series-s6e8'
+
+train = pd.read_csv(f'{DATA_DIR}/train.csv')
+test = pd.read_csv(f'{DATA_DIR}/test.csv')
+
+print(f"Train shape: {train.shape}")
+print(f"Test shape:  {test.shape}\n")
+
+# ---- 2. Feature Setup ----
+TARGET = 'addicted_label'
+ID_COL = 'id'
+CAT_COLS = ['gender', 'stress_level', 'academic_work_impact']
+NUM_COLS = [c for c in train.columns if c not in CAT_COLS + [TARGET, ID_COL]]
+
+GENDER_MAP = {'Male': 0, 'Female': 1, 'Other': 2, 'Missing': 3}
+STRESS_MAP = {'Low': 0, 'Medium': 1, 'High': 2, 'Missing': 3}
+IMPACT_MAP = {'No': 0, 'Yes': 1, 'Missing': 2}
+
+def preprocess(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df['gender'] = df['gender'].fillna('Missing').map(GENDER_MAP)
+    df['stress_level'] = df['stress_level'].fillna('Missing').map(STRESS_MAP)
+    df['academic_work_impact'] = df['academic_work_impact'].fillna('Missing').map(IMPACT_MAP)
+    return df
+
+def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Create ratio and interaction features."""
+    df = df.copy()
+    df['social_media_ratio'] = df['social_media_hours'] / (df['daily_screen_time_hours'] + 1e-8)
+    df['gaming_ratio'] = df['gaming_hours'] / (df['daily_screen_time_hours'] + 1e-8)
+    df['work_ratio'] = df['work_study_hours'] / (df['daily_screen_time_hours'] + 1e-8)
+    df['app_efficiency'] = df['app_opens_per_day'] / (df['notifications_per_day'] + 1e-8)
+    df['sleep_deficit'] = (8 - df['sleep_hours']).abs()
+    df['weekend_to_daily_ratio'] = df['weekend_screen_time'] / (df['daily_screen_time_hours'] + 1e-8)
+    df['total_activity_hours'] = (df['social_media_hours'] + df['gaming_hours'] + df['work_study_hours']).fillna(0)
+    df['screen_time_intensity'] = df['app_opens_per_day'] / (df['daily_screen_time_hours'] + 1e-8)
+    df['notifications_to_sleep_ratio'] = df['notifications_per_day'] / (df['sleep_hours'] + 1e-8)
+    df = df.fillna(0)
+    return df
+
+train = preprocess(train)
+test = preprocess(test)
+
+# Base features (for LGB and CB baseline)
+FEATURES_BASE = NUM_COLS + ['stress_level', 'academic_work_impact', 'gender']
+
+# Engineered features
+train_eng = engineer_features(train.copy())
+test_eng = engineer_features(test.copy())
+FEATURES_ENG = NUM_COLS + ['stress_level', 'academic_work_impact', 'gender'] + [
+    'social_media_ratio', 'gaming_ratio', 'work_ratio', 'app_efficiency', 
+    'sleep_deficit', 'weekend_to_daily_ratio', 'total_activity_hours', 
+    'screen_time_intensity', 'notifications_to_sleep_ratio'
+]
+
+X_base = train[FEATURES_BASE]
+X_test_base = test[FEATURES_BASE]
+X_eng = train_eng[FEATURES_ENG]
+X_test_eng = test_eng[FEATURES_ENG]
+y = train[TARGET]
+
+CAT_FEATURES_IDX = [FEATURES_BASE.index('gender')]
+
+# ---- 3. Cross-Validated Training ----
+skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+oof_lgbm = np.zeros(len(train))
+oof_catboost = np.zeros(len(train))
+oof_catboost_eng = np.zeros(len(train))
+
+test_lgbm = np.zeros(len(test))
+test_catboost = np.zeros(len(test))
+test_catboost_eng = np.zeros(len(test))
+
+lgb_params = {
+    'objective': 'binary',
+    'metric': 'auc',
+    'learning_rate': 0.05,
+    'num_leaves': 63,
+    'min_child_samples': 30,
+    'subsample': 0.8,
+    'subsample_freq': 1,
+    'colsample_bytree': 0.8,
+    'reg_alpha': 0.1,
+    'reg_lambda': 0.1,
+    'random_state': 42,
+    'verbosity': -1,
+    'n_jobs': -1,
+}
+
+catboost_params = {
+    'iterations': 2000,
+    'learning_rate': 0.05,
+    'depth': 8,
+    'l2_leaf_reg': 1.0,
+    'subsample': 0.8,
+    'colsample_bylevel': 0.8,
+    'min_data_in_leaf': 30,
+    'loss_function': 'Logloss',
+    'eval_metric': 'AUC',
+    'early_stopping_rounds': 100,
+    'verbose': False,
+    'random_state': 42,
+    'use_best_model': True,
+}
+
+print("=" * 60)
+print("TRAINING: LightGBM + CatBoost + CatBoost+Features")
+print("=" * 60)
+
+for fold, (train_idx, val_idx) in enumerate(skf.split(X_base, y), start=1):
+    X_tr_base, X_val_base = X_base.iloc[train_idx], X_base.iloc[val_idx]
+    X_tr_eng, X_val_eng = X_eng.iloc[train_idx], X_eng.iloc[val_idx]
+    y_tr, y_val = y.iloc[train_idx], y.iloc[val_idx]
+
+    # ---- LightGBM ----
+    train_set = lgb.Dataset(X_tr_base, label=y_tr, categorical_feature=[])
+    val_set = lgb.Dataset(X_val_base, label=y_val, categorical_feature=[], reference=train_set)
+    
+    model_lgb = lgb.train(
+        lgb_params, train_set, num_boost_round=2000,
+        valid_sets=[val_set],
+        callbacks=[lgb.early_stopping(100, verbose=False), lgb.log_evaluation(0)]
+    )
+    
+    val_pred_lgb = model_lgb.predict(X_val_base, num_iteration=model_lgb.best_iteration)
+    oof_lgbm[val_idx] = val_pred_lgb
+    test_lgbm += model_lgb.predict(X_test_base, num_iteration=model_lgb.best_iteration) / 5
+
+    # ---- CatBoost (baseline) ----
+    model_cb = CatBoostClassifier(**catboost_params, cat_features=CAT_FEATURES_IDX)
+    model_cb.fit(X_tr_base, y_tr, eval_set=(X_val_base, y_val), verbose=False)
+    
+    val_pred_cb = model_cb.predict_proba(X_val_base)[:, 1]
+    oof_catboost[val_idx] = val_pred_cb
+    test_catboost += model_cb.predict_proba(X_test_base)[:, 1] / 5
+
+    # ---- CatBoost (with features) ----
+    CAT_FEATURES_IDX_ENG = [FEATURES_ENG.index('gender')]
+    model_cb_eng = CatBoostClassifier(**catboost_params, cat_features=CAT_FEATURES_IDX_ENG)
+    model_cb_eng.fit(X_tr_eng, y_tr, eval_set=(X_val_eng, y_val), verbose=False)
+    
+    val_pred_cb_eng = model_cb_eng.predict_proba(X_val_eng)[:, 1]
+    oof_catboost_eng[val_idx] = val_pred_cb_eng
+    test_catboost_eng += model_cb_eng.predict_proba(X_test_eng)[:, 1] / 5
+
+    # Print fold results
+    lgb_auc = roc_auc_score(y_val, val_pred_lgb)
+    cb_auc = roc_auc_score(y_val, val_pred_cb)
+    cb_eng_auc = roc_auc_score(y_val, val_pred_cb_eng)
+    
+    print(f"Fold {fold}/5 — LGB: {lgb_auc:.5f} | CB: {cb_auc:.5f} | CB+Eng: {cb_eng_auc:.5f}")
+
+# ---- 4. Triple Blend ----
+print("\n" + "=" * 60)
+print("BLEND RESULTS")
+print("=" * 60)
+
+oof_blend = (oof_lgbm + oof_catboost + oof_catboost_eng) / 3
+test_blend = (test_lgbm + test_catboost + test_catboost_eng) / 3
+
+lgb_oof_auc = roc_auc_score(y, oof_lgbm)
+cb_oof_auc = roc_auc_score(y, oof_catboost)
+cb_eng_oof_auc = roc_auc_score(y, oof_catboost_eng)
+blend_oof_auc = roc_auc_score(y, oof_blend)
+
+print(f"LightGBM OOF AUC:           {lgb_oof_auc:.5f}")
+print(f"CatBoost OOF AUC:           {cb_oof_auc:.5f}")
+print(f"CatBoost+Features OOF AUC:  {cb_eng_oof_auc:.5f}")
+print(f"\nTriple Blend (33/33/33):    {blend_oof_auc:.5f}")
+
+# ---- 5. Submission ----
+submission = pd.DataFrame({
+    ID_COL: test[ID_COL],
+    TARGET: test_blend
+})
+
+submission.to_csv('submission.csv', index=False)
+print("\nsubmission.csv saved.")
+print(submission.head())
