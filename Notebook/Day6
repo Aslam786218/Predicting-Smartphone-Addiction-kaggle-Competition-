@@ -1,1 +1,172 @@
+# ============================================
+# Playground Series S6E8 - Weighted Ensemble
+# Test: 60/40, 55/45, 40/60 LGB/CB blends
+# ============================================
 
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import roc_auc_score
+import lightgbm as lgb
+from catboost import CatBoostClassifier
+import warnings
+warnings.filterwarnings('ignore')
+
+# ---- 1. Load Data ----
+DATA_DIR = '/kaggle/input/competitions/playground-series-s6e8'
+
+train = pd.read_csv(f'{DATA_DIR}/train.csv')
+test = pd.read_csv(f'{DATA_DIR}/test.csv')
+
+print(f"Train shape: {train.shape}")
+print(f"Test shape:  {test.shape}\n")
+
+# ---- 2. Feature Setup ----
+TARGET = 'addicted_label'
+ID_COL = 'id'
+CAT_COLS = ['gender', 'stress_level', 'academic_work_impact']
+NUM_COLS = [c for c in train.columns if c not in CAT_COLS + [TARGET, ID_COL]]
+
+GENDER_MAP = {'Male': 0, 'Female': 1, 'Other': 2, 'Missing': 3}
+STRESS_MAP = {'Low': 0, 'Medium': 1, 'High': 2, 'Missing': 3}
+IMPACT_MAP = {'No': 0, 'Yes': 1, 'Missing': 2}
+
+def preprocess(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df['gender'] = df['gender'].fillna('Missing').map(GENDER_MAP)
+    df['stress_level'] = df['stress_level'].fillna('Missing').map(STRESS_MAP)
+    df['academic_work_impact'] = df['academic_work_impact'].fillna('Missing').map(IMPACT_MAP)
+    return df
+
+train = preprocess(train)
+test = preprocess(test)
+
+FEATURES = NUM_COLS + ['stress_level', 'academic_work_impact', 'gender']
+CAT_FEATURES_IDX = [FEATURES.index('gender')]
+
+X = train[FEATURES]
+y = train[TARGET]
+X_test = test[FEATURES]
+
+# ---- 3. Cross-Validated Training ----
+skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+oof_lgbm = np.zeros(len(train))
+oof_catboost = np.zeros(len(train))
+test_lgbm = np.zeros(len(test))
+test_catboost = np.zeros(len(test))
+
+lgb_params = {
+    'objective': 'binary',
+    'metric': 'auc',
+    'learning_rate': 0.05,
+    'num_leaves': 63,
+    'min_child_samples': 30,
+    'subsample': 0.8,
+    'subsample_freq': 1,
+    'colsample_bytree': 0.8,
+    'reg_alpha': 0.1,
+    'reg_lambda': 0.1,
+    'random_state': 42,
+    'verbosity': -1,
+    'n_jobs': -1,
+}
+
+catboost_params = {
+    'iterations': 2000,
+    'learning_rate': 0.05,
+    'depth': 8,
+    'l2_leaf_reg': 1.0,
+    'subsample': 0.8,
+    'colsample_bylevel': 0.8,
+    'min_data_in_leaf': 30,
+    'loss_function': 'Logloss',
+    'eval_metric': 'AUC',
+    'early_stopping_rounds': 100,
+    'verbose': False,
+    'random_state': 42,
+    'use_best_model': True,
+}
+
+print("=" * 60)
+print("TRAINING: LightGBM & CatBoost")
+print("=" * 60)
+
+for fold, (train_idx, val_idx) in enumerate(skf.split(X, y), start=1):
+    X_tr, X_val = X.iloc[train_idx], X.iloc[val_idx]
+    y_tr, y_val = y.iloc[train_idx], y.iloc[val_idx]
+
+    # ---- LightGBM ----
+    train_set = lgb.Dataset(X_tr, label=y_tr, categorical_feature=[])
+    val_set = lgb.Dataset(X_val, label=y_val, categorical_feature=[], reference=train_set)
+    
+    model_lgb = lgb.train(
+        lgb_params, train_set, num_boost_round=2000,
+        valid_sets=[val_set],
+        callbacks=[lgb.early_stopping(100, verbose=False), lgb.log_evaluation(0)]
+    )
+    
+    val_pred_lgb = model_lgb.predict(X_val, num_iteration=model_lgb.best_iteration)
+    oof_lgbm[val_idx] = val_pred_lgb
+    test_lgbm += model_lgb.predict(X_test, num_iteration=model_lgb.best_iteration) / 5
+
+    # ---- CatBoost ----
+    model_cb = CatBoostClassifier(**catboost_params, cat_features=CAT_FEATURES_IDX)
+    model_cb.fit(X_tr, y_tr, eval_set=(X_val, y_val), verbose=False)
+    
+    val_pred_cb = model_cb.predict_proba(X_val)[:, 1]
+    oof_catboost[val_idx] = val_pred_cb
+    test_catboost += model_cb.predict_proba(X_test)[:, 1] / 5
+
+    print(f"Fold {fold}/5 — LGB: {roc_auc_score(y_val, val_pred_lgb):.5f} | CB: {roc_auc_score(y_val, val_pred_cb):.5f}")
+
+# ---- 4. Test Different Blend Ratios ----
+print("\n" + "=" * 60)
+print("WEIGHTED BLEND ANALYSIS")
+print("=" * 60)
+
+lgb_oof_auc = roc_auc_score(y, oof_lgbm)
+cb_oof_auc = roc_auc_score(y, oof_catboost)
+
+print(f"\nBase Models:")
+print(f"  LightGBM OOF AUC:  {lgb_oof_auc:.5f}")
+print(f"  CatBoost OOF AUC:  {cb_oof_auc:.5f}")
+
+blends = [
+    (0.60, 0.40, "60% LGB + 40% CB"),
+    (0.55, 0.45, "55% LGB + 45% CB"),
+    (0.50, 0.50, "50% LGB + 50% CB (current best: 0.96524)"),
+    (0.45, 0.55, "45% LGB + 55% CB"),
+    (0.40, 0.60, "40% LGB + 60% CB"),
+]
+
+blend_results = []
+
+for lgb_w, cb_w, label in blends:
+    oof_blend = (lgb_w * oof_lgbm + cb_w * oof_catboost)
+    blend_auc = roc_auc_score(y, oof_blend)
+    blend_results.append((lgb_w, cb_w, label, blend_auc))
+    
+    marker = " ← Testing" if lgb_w not in [0.50] else " ← Current Best"
+    print(f"{label:45} | OOF AUC: {blend_auc:.5f}{marker}")
+
+# Find best blend
+best_blend = max(blend_results, key=lambda x: x[3])
+best_lgb_w, best_cb_w, best_label, best_auc = best_blend
+
+print(f"\n{'=' * 60}")
+print(f"BEST BLEND: {best_label}")
+print(f"OOF AUC: {best_auc:.5f}")
+print(f"{'=' * 60}")
+
+# ---- 5. Generate Submission with Best Blend ----
+test_blend_best = (best_lgb_w * test_lgbm + best_cb_w * test_catboost)
+
+submission = pd.DataFrame({
+    ID_COL: test[ID_COL],
+    TARGET: test_blend_best
+})
+
+submission.to_csv('submission.csv', index=False)
+print(f"\nsubmission.csv saved (using {best_label})")
+print(submission.head())
