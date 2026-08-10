@@ -66,7 +66,7 @@ All feature columns contain missing values (roughly 15–20% per column). The ta
 | 4 | CatBoost + Features | 13 + 9 engineered | Added ratio features (social_media_ratio, gaming_ratio, app_efficiency, sleep_deficit, etc.) | 0.96401 | 0.96401 | Completed |
 | 5 | Triple Blend | 13 + 9 engineered | 33/33/33 blend of LightGBM + CatBoost + CatBoost+Features | 	0.96372 | 0.96485 | Completed |
 | 6 |              |                   |                                                           |  0.96378 | 0.96507 | Completed |
-| 6 |              |                   |                                                           |  0.96378 | 0.96507 | Completed |
+| 7 |              |                   |                                                           |  0.96378 | 0.96507 | Completed |
 
 ## Repository Structure
 ```
