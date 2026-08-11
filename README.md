@@ -62,11 +62,11 @@ All feature columns contain missing values (roughly 15–20% per column). The ta
 |---|---|---|---|---|---|---|
 | 1 | LightGBM | 13 original | 5-fold CV, native NaN handling, early stopping | 0.96358 | 0.9636 | Completed |
 | 2 | CatBoost | 13 original | Native categorical support, 5-fold CV, early stopping | 0.96387 | 0.96387 | Completed |
-| 3 | Ensemble (LGB + CB) | 13 original | 50/50 blend of LightGBM + CatBoost predictions | 0.96361 + 0.96387 | **0.96524** ✅ Best | Completed |
+| 3 | Ensemble (LGB + CB) | 13 original | 50/50 blend of LightGBM + CatBoost predictions | 0.96361 + 0.96387 | **0.96524** | Completed |
 | 4 | CatBoost + Features | 13 + 9 engineered | Added ratio features (social_media_ratio, gaming_ratio, app_efficiency, sleep_deficit, etc.) | 0.96401 | 0.96401 | Completed |
 | 5 | Triple Blend | 13 + 9 engineered | 33/33/33 blend of LightGBM + CatBoost + CatBoost+Features | 	0.96372 | 0.96485 | Completed |
 | 6 | Weighted Ensemble (LGB + CB) | 13 original |  60/40 weighted blend of LightGBM + CatBoost predictions |  0.96378 | 0.96507 | Completed |
-| 7 | Triple Blend (LGB + CB + XGB) |   13 original  |     50/20/30 weighted blend of LightGBM + CatBoost + XGBoost predictions |          |         | Completed |
+| 7 | Triple Blend (LGB + CB + XGB) |   13 original  |     50/20/30 weighted blend of LightGBM + CatBoost + XGBoost predictions |          |  0.96553 ✅ Best| Completed |
 
 ## Repository Structure
 ```
