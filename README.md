@@ -68,7 +68,7 @@ All feature columns contain missing values (roughly 15–20% per column). The ta
 | 6 | Weighted Ensemble (LGB + CB) | 13 original |  60/40 weighted blend of LightGBM + CatBoost predictions |  0.96378 | 0.96507 | Completed |
 | 7 | Triple Blend (LGB + CB + XGB) |   13 original  |     50/20/30 weighted blend of LightGBM + CatBoost + XGBoost predictions |0.96418|0.96553 ✅ Best|Completed|
 | 8 | Stacking (LGB + CB Meta-Learner)  | 13 original | Logistic Regression meta-learner trained on LGB + CB OOF predictions to learn optimal weights |0.967171||completed|
-| 9 |  |     |      ||||
+| 9 |  |     |      |0.96496||Completed|
 
 ## Repository Structure
 ```
